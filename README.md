@@ -16,8 +16,8 @@ This project provides a fully client-based web application for viewing and searc
 1. Clone the repository:
 
    ```
-   git clone <repository-url>
-   cd vite-tailwind-ts-project
+   git clone https://github.com/CJohnson25/patient-lookup.git
+   cd patient-lookup
    ```
 
 2. Install the dependencies:
