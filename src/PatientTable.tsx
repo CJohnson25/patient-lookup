@@ -11,19 +11,20 @@ import {
 } from "@tanstack/react-table";
 import React from "react";
 import { Link } from "react-router";
-import mockPatientNotesData from "../data/mock_notes_small.json";
-import mockPatientData from "../data/mock_patients_small.json";
+import mockPatientNotesData from "../data/mock_notes.json";
+import mockPatientData from "../data/mock_patients.json";
 import ViewContainer from "./containers/ViewContainer";
 import { DownArrow } from "./icons/DownArrow";
 import { RightArrow } from "./icons/RightArrow";
 import PatientNote from "./PatientNote";
 import { Note, NoteFilter, PatientData } from "./types";
-import { formatDateTime } from "./utils";
+import { formatDateTime, isWithinDateRange } from "./utils";
 
 /**
  * PatientTable component displays a table of patients with filtering and sorting capabilities.
  */
 export default function PatientTable() {
+  // Assemble all patient data with their notes - in a real app, this would likely come from an API
   const allData: PatientData[] = mockPatientData
     ? mockPatientData.map((patient) => ({
         ...patient,
@@ -36,18 +37,18 @@ export default function PatientTable() {
   const defaultNoteFilter: NoteFilter = {
     provider_name: [],
     hospital_name: [],
-    start_date: "",
-    end_date: "",
+    start_date: undefined,
+    end_date: undefined,
     text: "",
   };
+
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([
     { id: "notes", value: defaultNoteFilter },
   ]); // can set initial column filter state here
-  const [noteFilterState, _setNoteFilterState] =
-    React.useState(defaultNoteFilter);
   const [data, _setData] = React.useState(() => [...allData]);
-  const columnHelper = createColumnHelper<PatientData>();
 
+  // Column definitions
+  const columnHelper = createColumnHelper<PatientData>();
   const columns = [
     columnHelper.accessor("name", {
       id: "name",
@@ -68,46 +69,12 @@ export default function PatientTable() {
       id: "date_of_birth",
       header: "DoB",
       cell: (info) => formatDateTime(info.getValue() as string),
-      filterFn: (row, columnId, value: string) => {
+      filterFn: (row, columnId, value: [string, string]) => {
         const date = row.getValue(columnId)
           ? new Date(row.getValue(columnId) as string)
           : undefined;
 
-        if (!date) {
-          return true; // If no date, don't filter it out
-        }
-
-        const [start, end] = value ?? []; // value => two date input values
-        const startDate = start ? new Date(start) : undefined;
-        const endDate = end ? new Date(end) : undefined;
-
-        if (
-          !(startDate instanceof Date || startDate === undefined) ||
-          !(endDate instanceof Date || endDate === undefined)
-        ) {
-          console.error(
-            `Filter value of column "${columnId}" is expected to be an array of two dates, but got ${value}`
-          );
-          return false;
-        }
-
-        // If one filter defined and date is undefined, filter it
-        if ((startDate || endDate) && !date) {
-          return false;
-        }
-
-        if (startDate && !endDate) {
-          return date.getTime() >= startDate.getTime();
-        } else if (!startDate && endDate) {
-          return date.getTime() <= endDate.getTime();
-        } else if (startDate && endDate) {
-          return (
-            date.getTime() >= startDate.getTime() &&
-            date.getTime() <= endDate.getTime()
-          );
-        }
-
-        return true;
+        return isWithinDateRange(date, value);
       },
       sortingFn: "datetime",
     }),
@@ -151,12 +118,10 @@ export default function PatientTable() {
     }),
   ];
 
+  // Table definition
   const table = useReactTable({
     data,
     columns,
-    // getSubRows: (row) =>
-    //   row?.notes &&
-    //   row.notes.filter((note) => matchesNoteFilter(note, noteFilterState)), // return the children array as sub-rows
     getRowCanExpand: (row) => {
       return (
         !!row.getValue("notes") &&
@@ -175,11 +140,12 @@ export default function PatientTable() {
     onColumnFiltersChange: setColumnFilters,
   });
 
-  const nameCol = table ? table.getColumn("name") : null;
-  const genderCol = table ? table.getColumn("gender") : null;
-  const dobCol = table ? table.getColumn("date_of_birth") : null;
+  const nameCol = table.getColumn("name");
+  const genderCol = table.getColumn("gender");
+  const dobCol = table.getColumn("date_of_birth");
   const notesCol = table.getColumn("notes");
 
+  // Function to check if a note matches the filter criteria
   function matchesNoteFilter(note: Note, filterValue: NoteFilter) {
     const matchesText =
       filterValue?.text && note.text
@@ -201,8 +167,17 @@ export default function PatientTable() {
             (val) => note.hospital_name?.toLowerCase() === val.toLowerCase()
           )
         : true;
+    const matchesDateRange =
+      filterValue.start_date && filterValue.end_date
+        ? isWithinDateRange(
+            note.creation_date ? new Date(note.creation_date) : undefined,
+            [filterValue.start_date, filterValue.end_date]
+          )
+        : true;
 
-    return matchesText && matchesProvider && matchesHospital;
+    return (
+      matchesText && matchesProvider && matchesHospital && matchesDateRange
+    );
   }
 
   return (
@@ -411,6 +386,7 @@ export default function PatientTable() {
               />
             </label>
           </div>
+          {/* Reset Filters Button */}
           <div>
             <button
               className="btn-primary"
@@ -426,12 +402,13 @@ export default function PatientTable() {
             </button>
           </div>
         </div>
+
+        {/* Patient Data Table */}
         <table>
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  // <th key={header.id} className="px-6 py-3">
                   <th key={header.id}>
                     {header.isPlaceholder ? null : (
                       <div
@@ -474,10 +451,6 @@ export default function PatientTable() {
                     <tr>
                       {row.getVisibleCells().map((cell) => (
                         <td key={cell.id}>
-                          {/* <FlexRender
-                      render={cell.column.columnDef.cell}
-                      props={cell.getContext()}
-                    /> */}
                           {flexRender(
                             cell.column.columnDef.cell,
                             cell.getContext()
@@ -520,6 +493,8 @@ export default function PatientTable() {
             )}
           </tbody>
         </table>
+
+        {/* Pagination */}
         <div className="h-2" />
         <div className="flex items-center gap-2">
           <button

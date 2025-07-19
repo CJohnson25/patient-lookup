@@ -1,4 +1,4 @@
-# Layerhealth Front-end Coding Assignment
+# Layer Health Front-end Coding Assignment
 
 ## Overview
 
